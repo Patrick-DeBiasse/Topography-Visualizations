@@ -1,0 +1,163 @@
+---
+layout: post
+title: "R is for Art"
+author: "Patrick DeBiasse"
+date: '2020-02-17'
+tags: [R, Data Visualization]
+output:
+  md_document:
+    variant: markdown_github
+---
+
+**Abstract**:
+
+Here I use R to download and manipulate XYZ elevation data for one of Salt Lake City's most popular hikes into a detailed 3D model of the region. The R Markdown file used to write this post can be found on my github [here]()
+
+**Intro**:
+
+A common source of anxiety when flying is anticipating your immediate neighbors - the screeching child, the sniffler who's "pretty sure it's just allergies", the max-screen-brightness-iPad on red-eye. Once seated 3 inches from one (or a few) of these, no amount of stroopwafel and headphone volume can really salvage things.  
+
+That said, now and then this forced proximity is great. Case in point: this past November,  a 4 hour flight from Newark to Denver turned into a 4 hour chat spanning best neighborhoods in Philly, new cancer treatments, food truck entrepreneurship, and (the inspiration for this work) metallic topographical maps. My new friend's name was Jim Abraham, and among other things, he hand-sculpts metallic topographical maps. Here is Nantucket Island:
+
+<center>
+
+<img src="{{ site.url }}{{ site.baseurl }}/assets/images/R_is_for_Art/1_Nantucket Island_metalic.PNG" alt="Nantucket Island, by Jim Abraham.">
+
+</center>
+
+<p style="text-align: center; font-style: italic;">Nantucket Island, by Jim Abraham. View more of his work <a href="https://www.abrahamartistry.com/">here</a>.</p>
+
+About a month after meeting Jim, I stumbled upon Rayshader - an R package that allows you to create detailed 3D renderings of topography using publicly available elevation data.
+
+I immediately thought of his work, and emailed him to learn more about how he was currently getting topography for his regions of interest. Turns out he had grown accustomed to manually crawling through the terrain on Google Maps - a slow and painful process.
+
+I gladly offered to generate topography using Rayshader to relieve some of this arduous map-crawling. Below is Nantucket Island again, rendered with elevation data and a satellite image overlay:
+
+<center>
+
+<img src="{{ site.url }}{{ site.baseurl }}/assets/images/R_is_for_Art/2_Nantucket Island_rendered.png" alt="Nantucket Island, rendered with R.">
+
+</center>
+
+<p style="text-align: center; font-style: italic;">Nantucket Island, rendered with R.</p>
+
+Admittedly, flat regions like Nantucket Island don't lend themselves to exciting 3D renderings. You can see some texture, but there's just not a lot of the third dimension going on. For more mountainous regions, things can look more interesting (while also being more  helpful for Jim).
+
+To demonstrate this, I generated 3D topography for one of Salt Lake City's more popular hikes - the Living Room Trail. It has approximately 1,000 feet of elevation gain, as opposed to Nantucket Island's meager 30 feet.  
+
+See below for the code used to generate the rendering. In general, the process is as follows:
+1. Install the necessary packages
+2. Set up the region (coordinates and area of location to be visualized)
+3. Set the plot resolution
+4. Download the region's elevation data and transform it to Rayshader's liking
+5. Add a satellite image overlay of the region (optional, but cool)
+6. Render the final scene (in this case, a rotating "flyover" video of the region)
+
+**Load packages**:
+```{r, echo = TRUE, eval = FALSE}
+library(rayshader) #3D plotting.
+library(geoviz) #Elevation data downloader.
+library(av) #For making videos (only needed if you want to make things like rotating GIFs).
+```
+
+**Set up the region**:
+```{r, echo = TRUE, eval = FALSE}
+#Lat and long for Living Room Trail, SLC.
+lat <- 40.766632
+long <- -111.811704
+
+#Size of surrounding area you want to visualize.
+square_km <- 0.8
+```
+
+**Choose the plotting resolution**:
+```{r, echo = TRUE, eval = FALSE}
+max_tiles <- 20
+#Tiles are little  pieces of the overall map that get stitched together.
+#Requesting more tiles results in a higher resolution (but slower to generate) image.
+```
+
+**Get elevation data**:
+```{r, echo = TRUE, eval = FALSE}
+#Get Digital Elevation Model from 'mapzen' via 'Amazon Public Datasets'.
+dem <- mapzen_dem(lat, long, square_km, max_tiles = max_tiles)
+
+#elmat stands for elevation matrix.
+elmat = matrix(
+  raster::extract(dem, raster::extent(dem), method = 'bilinear'),
+  nrow = ncol(dem),
+  ncol = nrow(dem)
+)
+```
+
+Thanks to NASA's Space Shuttle Radar Topography Mission, elevation data for most of the earth's surface is publicly available with spatial (x-y) resolution of 30 meters and height (z) resolution of about 15 meters. You can explore and manually download this data [here](https://www.usgs.gov/earthexplorer-0/).
+
+**Add a satellite image overlay**:
+```{r, echo = TRUE, eval = FALSE}
+#To get a mapbox key, go here https://docs.mapbox.com/help/glossary/access-token/.
+mapbox_key <- "pk.eyJ1IjoicGF0cmlja2RlYiIsImEiOiJjazVtcmltcWIxMnJmM21wbDZkcHlzMzEwIn0.sAIvHarJXAc6VHgomtK2yQ"
+
+#Rayshader has built-in terrain aesthetics you can choose from, but satellite images are more realistic:
+overlay_image <-
+  slippy_overlay(
+    dem,
+    image_source = "mapbox",
+    image_type = "satellite",
+    png_opacity = 0.6,
+    api_key = mapbox_key
+  )
+```
+
+
+**Render the Rayshader scene**:
+```{r, echo = TRUE, eval = FALSE}
+elmat %>%
+  sphere_shade(texture = "desert") %>%
+  add_water(detect_water(elmat), color = "imhof4") %>%
+  add_shadow(ray_shade(elmat, zscale = 3), 0.5) %>%
+  add_shadow(ambient_shade(elmat), 0) %>%
+  add_overlay(overlay_image) %>%
+  plot_3d(elmat, zscale = raster_zscale(dem), fov = 0, theta = 0, zoom = 0.75, phi = 55, windowsize = c(1000, 800))
+Sys.sleep(0.2)
+
+render_movie('SLC_Living_Room_Trail')
+```
+
+**Final output:**
+
+<center>
+
+<img src="{{ site.url }}{{ site.baseurl }}/assets/images/R_is_for_Art/3_livingroomtrail_onerotation_reduced.gif" alt="Living Room Trail, SLC, Rendered with R.">
+
+</center>
+
+<p style="text-align: center; font-style: italic;">3D Topography of Living Room Trail and surrounding area.</p>
+
+**Closing thoughts**:
+
+3D topography visualizations have quite a few promising applications. Helping Jim spend more time with his pieces and less time scrolling through 2D terrain is one fairly niche case (nonetheless one I'm excited about supporting).
+
+For something that might appeal to a broader audience, replacing standard 2D topographical maps with 3D renderings would be a boon for hikers. I for one have botched more than a few hikes not interpreting standard topographical maps correctly. This is the nature of making 2D abstractions of what is inherently 3D information. See below for what the Living Room Trail looks like, represented with standard topography:
+
+<center>
+
+<img src="{{ site.url }}{{ site.baseurl }}/assets/images/R_is_for_Art/4_living room trail_topography.PNG" alt="Living Room Trail Topographical Map.">
+
+</center>
+
+<p style="text-align: center; font-style: italic;">Standard Living Room Trail topography (from AllTrails.com).</p>
+
+If AllTrails (a popular hiking app) replaced their standard topographical maps with 3D renderings that users could turn over and explore like any other 3D model, users would benefit from a clearer idea of where they are currently and what lies down the trail. This would encourage more confident exploration and likely cut down on wrong turns. Once things warm up, I think I'll see about adding an XYZ trace to the Living Room Trail rendering with latitude/longitude/elevation data from my phone's GPS (assuming I don't get lost).   
+
+If you have any thoughts or questions on the above, please reach out:  [patrick.debiasse@gmail.com](patrick.debiasse@gmail.com).
+
+**Acknowledgements**:
+
+-   Jim Abraham for the collaboration, view his work
+    [here](https://www.abrahamartistry.com/)
+
+-   Tyler Morgan-Wall for creating
+    [Rayshader](https://www.rayshader.com/)
+
+-   Neil Charles for creating
+    [Geoviz](https://cran.r-project.org/web/packages/geoviz/index.html)
